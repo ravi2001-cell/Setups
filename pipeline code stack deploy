@@ -1,0 +1,63 @@
+pipeline {
+    agent {
+        node {
+            label 'prod'
+        }
+    }
+    tools {
+        maven 'mymaven'
+    }
+
+    stages {
+        stage('code') {
+            steps {
+                git 'https://github.com/ravi2001-cell/dockerwebapp.git'
+            }
+        }
+        stage('cqa code scan sonar') {
+            steps {
+                withSonarQubeEnv('sonarqube') {
+                    sh "mvn clean verify sonar:sonar -Dsonar.projectKey=myproject"
+            }
+        }
+    }
+    stage('build') {
+            steps {
+               sh 'mvn clean package'
+               sh 'cp -r target Docker-app'
+            }
+        }
+    stage('articat uploader') {
+            steps {
+               nexusArtifactUploader artifacts: [[artifactId: 'vprofile', classifier: '', file: 'target/vprofile-v2.war', type: 'war']], credentialsId: 'nexus', groupId: 'com.visualpathit', nexusUrl: '3.94.169.67:8081/', nexusVersion: 'nexus3', protocol: 'http', repository: 'myrepo', version: 'v2'
+            }    
+        }
+         stage('docker build') {
+            steps {
+               sh 'docker build -t rkdocker1800/automation:app Docker-app'
+               sh 'docker build -t rkdocker1800/automation:db Docker-db'
+            }
+        }
+        stage('image scan') {
+            steps {
+               sh 'trivy image rkdocker1800/automation:app'
+               sh 'trivy image rkdocker1800/automation:db'
+            }
+        }
+        stage('docker push') {
+            steps {
+                script { 
+                     withDockerRegistry(credentialsId: 'dockerpassword') {
+                         sh 'docker push rkdocker1800/automation:db'
+                         sh 'docker push rkdocker1800/automation:app'
+                 }
+            }
+       }
+    }
+            stage('deploy using compose or stack') {
+            steps {
+               sh 'docker stack deploy -c compose.yml myapp'
+            }
+        }
+    }
+}
