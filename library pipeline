@@ -1,0 +1,61 @@
+pipeline {
+    agent {
+        node {
+            label 'prod'
+        }
+    }
+
+    stages {
+        stage('code') {
+            steps {
+                git 'https://github.com/ravi2001-cell/python-code-library-app.git'
+            }
+        }
+        stage ("CQA") { 
+            environment {
+                scannerHome = tool 'mysonarqube'
+            }
+            steps { 
+                withSonarQubeEnv('sonarqube1') {
+                sh "${scannerHome}/bin/sonar-scanner -Dsonar.projectKey=library"
+                 }
+             }
+        }
+        stage("docker build image") {
+            steps { 
+                 sh 'docker build -t rkdocker1800/library:db_image database'
+                 sh 'docker build -t rkdocker1800/library:book_image book'
+                 sh 'docker build -t rkdocker1800/library:auth_image auth'
+                 sh 'docker build -t rkdocker1800/library:borrow_image borrow'
+                 sh 'docker build -t rkdocker1800/library:frontend_image .'
+        }
+    }
+    stage ("scan") {
+        steps {
+            sh 'trivy image rkdocker1800/library:db_image'
+            sh 'trivy image rkdocker1800/library:auth_image'
+            sh 'trivy image rkdocker1800/library:book_image'
+            sh 'trivy image rkdocker1800/library:borrow_image'
+            sh 'trivy image rkdocker1800/library:frontend_image'
+            }
+        }
+        stage ("push") {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'docker_password') {
+                        sh 'docker push rkdocker1800/library:db_image'
+                         sh 'docker push rkdocker1800/library:auth_image'
+                          sh 'docker push rkdocker1800/library:book_image'
+                           sh 'docker push rkdocker1800/library:borrow_image'
+                            sh 'docker push rkdocker1800/library:frontend_image'
+                    }
+                }
+            }
+        }
+        stage ("deploy") {
+            steps {
+                sh 'docker stack deploy -c compose.yml library'
+            }
+        }
+    }
+}
