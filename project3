@@ -1,0 +1,49 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('code') {
+            steps {
+                git 'https://github.com/ravi2001-cell/ltibbhackathon.git'
+            }
+        }
+        stage('cqa') {
+            environment {
+                scannerHome = tool 'sonar'
+            }
+            steps { 
+                withSonarQubeEnv('sonar') {
+                sh "${scannerHome}/bin/sonar-scanner -Dsonar.projectKey=project3"
+                 }
+             }
+        }
+        stage('build image') {
+            steps {
+                sh 'docker build -t rkdocker1800/brepo:app .'
+                sh 'docker build -t rkdocker1800/brepo:db database'
+            }
+        }
+        stage('imagescan') {
+            steps{
+                sh 'trivy image rkdocker1800/brepo:app'
+                sh 'trivy image rkdocker1800/brepo:db'
+             }
+        }
+        stage('push image') {
+            steps {
+                script {
+                withDockerRegistry(credentialsId: 'docker') {
+                    sh 'docker push rkdocker1800/brepo:app'
+                sh 'docker push rkdocker1800/brepo:db'
+                    }
+                }
+            }
+        }
+        stage('deploy') {
+            steps {
+                sh 'docker run -d --name mysqldb -p 3036:3036 rkdocker1800/brepo:db'
+                sh 'docker run -d --name myapp -p 1234:80 --link mysqldb:mysqlcon rkdocker1800/brepo:app'
+            }
+        }
+    }
+}
